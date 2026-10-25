@@ -277,6 +277,7 @@ func runOlmMainWithArgs(ctx context.Context, cancel context.CancelFunc, signalCt
 			SubnetRouter:                      config.SubnetRouter,
 			DisableRoutesAndAliasesOnExitNode: config.DisableRoutesAndAliasesOnExitNode,
 			EnableUAPI:                        true,
+			Fallback:                          config.Fallback, // fork
 		}
 		go olm.StartTunnel(tunnelConfig)
 	} else {

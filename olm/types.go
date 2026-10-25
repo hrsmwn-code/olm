@@ -3,6 +3,7 @@ package olm
 import (
 	"time"
 
+	"github.com/fosrl/newt/fallback"
 	"github.com/fosrl/olm/peers"
 )
 
@@ -169,6 +170,9 @@ type TunnelConfig struct {
 	InitialPostures    map[string]any
 
 	DisableRelay bool
+
+	// fork: TCP 443 fallback transport (zero value = auto)
+	Fallback fallback.Settings
 
 	// PreferLocalRoutes, when enabled, adds tunnel routes with an explicit
 	// high metric/priority so that an overlapping local/connected route to

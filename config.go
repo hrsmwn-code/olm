@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/fosrl/newt/fallback"
 )
 
 // OlmConfig holds all configuration options for the Olm client
@@ -57,6 +59,10 @@ type OlmConfig struct {
 	DisableRoutesAndAliasesOnExitNode bool   `json:"disableRoutesAndAliasesOnExitNode"`
 	// DoNotCreateNewClient bool   `json:"doNotCreateNewClient"`
 
+	// fork: TCP 443 fallback transport
+	fallback.FileSettings
+	Fallback fallback.Settings `json:"-"`
+
 	// Parsed values (not in JSON)
 	PingIntervalDuration time.Duration `json:"-"`
 	PingTimeoutDuration  time.Duration `json:"-"`
@@ -101,6 +107,7 @@ func DefaultConfig() *OlmConfig {
 		DisableHolepunch: false,
 		OverrideDNS:      true,
 		TunnelDNS:        false,
+		Fallback:         fallback.DefaultSettings(), // fork
 		// DoNotCreateNewClient: false,
 		sources: make(map[string]string),
 	}
@@ -167,10 +174,12 @@ func LoadConfig(args []string) (*OlmConfig, bool, bool, error) {
 	}
 	if fileConfig != nil {
 		mergeConfigs(config, fileConfig)
+		config.Fallback.ApplyFile(fileConfig.FileSettings) // fork
 	}
 
 	// Override with environment variables
 	loadConfigFromEnv(config)
+	config.Fallback.ApplyEnv() // fork
 
 	// Override with CLI arguments
 	showVersion, showConfig, err := loadConfigFromCLI(config, args)
@@ -180,6 +189,9 @@ func LoadConfig(args []string) (*OlmConfig, bool, bool, error) {
 
 	// Parse duration strings
 	if err := config.parseDurations(); err != nil {
+		return nil, false, false, err
+	}
+	if err := config.Fallback.Validate(); err != nil { // fork
 		return nil, false, false, err
 	}
 
@@ -368,6 +380,8 @@ func loadConfigFromCLI(config *OlmConfig, args []string) (bool, bool, error) {
 	serviceFlags.BoolVar(&config.SubnetRouter, "subnet-router", config.SubnetRouter, "Enable this client to act as a subnet router: traffic forwarded from the local network is NATed to this client's own tunnel IP before going out over the tunnel. Linux only, requires CAP_NET_ADMIN. (default false)")
 	serviceFlags.BoolVar(&config.DisableRoutesAndAliasesOnExitNode, "disable-routes-and-aliases", config.DisableRoutesAndAliasesOnExitNode, "Make the exit node take precedence over individual resources: while an exit node is connected, remove routes/aliases for site resources, restoring them once it disconnects. Gateway routes are still added. (default false)")
 	// serviceFlags.BoolVar(&config.DoNotCreateNewClient, "do-not-create-new-client", config.DoNotCreateNewClient, "Do not create new client")
+
+	config.Fallback.RegisterFlags(serviceFlags) // fork
 
 	version := serviceFlags.Bool("version", false, "Print the version")
 	showConfig := serviceFlags.Bool("show-config", false, "Show configuration sources and exit")
