@@ -642,6 +642,8 @@ func (o *Olm) StartTunnel(config TunnelConfig) {
 		return
 	}
 
+	o.setupFallback() // fork: TCP 443 fallback (before the shared socket exists)
+
 	// Create shared UDP socket and holepunch manager
 	if err := o.initTunnelInfo(id); err != nil {
 		logger.Error("%v", err)
@@ -730,7 +732,7 @@ func (o *Olm) StartTunnel(config TunnelConfig) {
 		logger.Debug("Sending registration message to server with public key: %s, relay: %v, pingResults: %+v", publicKey, !config.Holepunch, pingResults)
 		o.stopRegister, o.updateRegister = o.websocket.SendMessageInterval("olm/wg/register", map[string]any{
 			"publicKey":    publicKey.String(),
-			"relay":        !config.Holepunch,
+			"relay":        o.registerRelay(config), // fork
 			"olmVersion":   o.olmConfig.OlmVersion,
 			"olmAgent":     o.olmConfig.Agent,
 			"agentVersion": o.olmConfig.Version,
@@ -788,7 +790,7 @@ func (o *Olm) StartTunnel(config TunnelConfig) {
 			bcChainId := generateChainId()
 			if err := o.websocket.SendMessage("olm/wg/register", map[string]any{
 				"publicKey":           publicKey.String(),
-				"relay":               !config.Holepunch,
+				"relay":               o.registerRelay(config), // fork
 				"olmVersion":          o.olmConfig.OlmVersion,
 				"olmAgent":            o.olmConfig.Agent,
 				"agentVersion":        o.olmConfig.Version,
@@ -821,6 +823,7 @@ func (o *Olm) StartTunnel(config TunnelConfig) {
 		}
 
 		o.holePunchManager.SetToken(token)
+		o.fallbackOnToken(token, exitNodeEndpoints(exitNodes)) // fork
 
 		logger.Debug("Got exit nodes for hole punching: %v", exitNodes)
 
@@ -1079,6 +1082,7 @@ func (o *Olm) Close() {
 		logger.Info("Released shared UDP bind")
 		o.sharedBind = nil
 	}
+	o.closeFallback() // fork: TCP 443 fallback
 
 	logger.Info("Olm service stopped")
 }
@@ -1409,6 +1413,7 @@ func (o *Olm) RebindSocket() error {
 	}
 
 	logger.Info("Successfully rebound UDP socket on port %d", newPort)
+	o.fallbackNetworkChanged() // fork: re-probe UDP on the new network
 
 	// A rebind is requested on network changes; the bypass routes may need
 	// to follow the new physical path too.
