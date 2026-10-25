@@ -1,0 +1,72 @@
+# Fork-only: keep the `fallback` branch rebased on upstream olm releases and
+# test it against the newt fork. olm itself ships inside the CLI build.
+name: fork-fallback
+
+on:
+  schedule:
+    - cron: "37 3 * * *"
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: "Upstream tag to rebase onto (default: latest release)"
+        required: false
+  push:
+    branches: [fallback]
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  NEWT_FORK: ${{ github.repository_owner }}/newt
+
+jobs:
+  rebase-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fallback
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.NEWT_FORK }}
+          ref: fallback
+          path: _newt
+      - name: Rebase onto upstream release
+        id: rebase
+        if: github.event_name != 'push'
+        run: |
+          git config user.name "fork-bot"
+          git config user.email "fork-bot@users.noreply.github.com"
+          git remote add upstream https://github.com/fosrl/olm.git
+          git fetch --tags upstream
+          tag="${{ inputs.upstream_tag }}"
+          [ -n "$tag" ] || tag=$(git tag -l '[0-9]*.[0-9]*.[0-9]*' | grep -v -- '-' | sort -V | tail -1)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          base=$(git merge-base HEAD "$tag")
+          if [ "$base" = "$(git rev-list -n1 "$tag")" ]; then echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          git rebase --onto "$tag" "$base" fallback
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Test against newt fork
+        run: |
+          go work init . ./_newt
+          go build ./...
+          GOOS=darwin GOARCH=arm64 go build ./...
+          go test ./olm/ ./websocket/ .
+      - name: Push rebased branch
+        if: steps.rebase.outputs.changed == 'true'
+        run: git push --force-with-lease origin fallback
+      - name: Open issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              title: `olm fallback rebase/test failed`,
+              body: `See ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            })
