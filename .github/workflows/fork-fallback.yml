@@ -33,6 +33,8 @@ jobs:
           repository: ${{ env.NEWT_FORK }}
           ref: fallback
           path: _newt
+      - name: Test release tag selection
+        run: python3 .github/scripts/test_release_tag.py
       - name: Rebase onto upstream release
         id: rebase
         if: github.event_name != 'push'
@@ -42,7 +44,7 @@ jobs:
           git remote add upstream https://github.com/fosrl/olm.git
           git fetch --tags upstream
           tag="${{ inputs.upstream_tag }}"
-          [ -n "$tag" ] || tag=$(git tag -l '[0-9]*.[0-9]*.[0-9]*' | grep -v -- '-' | sort -V | tail -1)
+          [ -n "$tag" ] || tag=$(git tag -l | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | sed -E 's/^v?([0-9].*)$/\1 &/' | sort -k1,1V | tail -1 | awk '{print $2}')
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           base=$(git merge-base HEAD "$tag")
           if [ "$base" = "$(git rev-list -n1 "$tag")" ]; then echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi
