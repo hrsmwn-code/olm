@@ -44,7 +44,7 @@ jobs:
           git remote add upstream https://github.com/fosrl/olm.git
           git fetch --tags upstream
           tag="${{ inputs.upstream_tag }}"
-          [ -n "$tag" ] || tag=$(git tag -l | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | sed -E 's/^v?([0-9].*)$/\1 &/' | sort -k1,1V | tail -1 | awk '{print $2}')
+          [ -n "$tag" ] || tag=$(git tag -l | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | sed -E 's/^v?([0-9].*)$/\1 &/' | LC_ALL=C sort -k1,1Vr -k2,2 | awk 'NR == 1 {print $2}')
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           base=$(git merge-base HEAD "$tag")
           if [ "$base" = "$(git rev-list -n1 "$tag")" ]; then echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi
